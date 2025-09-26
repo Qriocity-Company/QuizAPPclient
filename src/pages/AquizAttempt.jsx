@@ -87,41 +87,29 @@ const AquizAttempt = () => {
     // Parse the cleaned JSON
     const quizData = JSON.parse(content);
 
-    // Create a map of questions by ID for easy lookup
-    const questionsMap = {};
-    quizData.questions.forEach((q) => {
-      questionsMap[q.id] = q;
-    });
-
-    // Create a map of answers by ID for easy lookup
-    const answersMap = {};
-    quizData.answers.forEach((a) => {
-      answersMap[a.id] = a.options;
-    });
-
     // Transform the quizData into the format expected by your component
     const quizQuestions = quizData.questions.map((q) => {
       // Find the correct answer key for this question
-      const correctAnswerKey = quizData.answer_keys[q.id.toString()];
-      
-      // Get the options for this question
-      const options = answersMap[q.id] || [];
+      const correctAnswerKey = quizData.answer_key[q.id];
       
       // Find the correct answer text based on the answer key
       let correctAnswer = "";
-      if (options.length > 0 && correctAnswerKey) {
+      if (q.answers && q.answers.length > 0 && correctAnswerKey) {
         // Find the option that starts with the correct answer key (e.g., "A)")
-        const correctOption = options.find(option => 
+        const correctOption = q.answers.find(option => 
           option.trim().startsWith(`${correctAnswerKey})`)
         );
         correctAnswer = correctOption || "";
       }
 
+      // Combine scenario and question for display
+      const fullQuestion = q.scenario ? `${q.scenario}\n\n${q.question}` : q.question;
+
       return {
         id: q.id,
-        question: q.question,
-        options: options,
-        answer: correctAnswer // This now contains the full correct answer text
+        question: fullQuestion,
+        options: q.answers || [],
+        answer: correctAnswer
       };
     });
 
@@ -183,28 +171,35 @@ const AquizAttempt = () => {
           Automated Quiz on {quizdata.title}
         </h1>
         {quiz.map((q, index) => (
-          <div key={index} className="mb-8">
-            <div className="flex">
-            <p className="font-bold text-xl">{index+1}</p>
-            <h2 className="text-xl font-semibold mb-4">. {q.question}</h2>
-            </div>
-            {q.options.map((option, i) => (
-              <label
-                key={i}
-                className="block py-2 px-4 rounded-lg bg-gray-100 hover:bg-indigo-100 text-gray-800 mb-2 transition-colors cursor-pointer"
-              >
-                <input
-                  type="radio"
-                  name={`question-${index}`}
-                  value={option}
-                  onChange={() => handleAnswerChange(index, option)}
-                  className="mr-3"
-                />
-                {option}
-              </label>
-            ))}
-          </div>
-        ))}
+  <div key={index} className="mb-8">
+    <div className="flex flex-col">
+      <div className="flex">
+        <p className="font-bold text-xl">{index+1}</p>
+        <h2 className="text-xl font-semibold mb-4">. {q.question.split('\n\n')[1] || q.question}</h2>
+      </div>
+      {q.question.includes('\n\n') && (
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+          <p className="text-gray-700 italic">{q.question.split('\n\n')[0]}</p>
+        </div>
+      )}
+    </div>
+    {q.options.map((option, i) => (
+      <label
+        key={i}
+        className="block py-2 px-4 rounded-lg bg-gray-100 hover:bg-indigo-100 text-gray-800 mb-2 transition-colors cursor-pointer"
+      >
+        <input
+          type="radio"
+          name={`question-${index}`}
+          value={option}
+          onChange={() => handleAnswerChange(index, option)}
+          className="mr-3"
+        />
+        {option}
+      </label>
+    ))}
+  </div>
+))}
         <div className="text-center">
           <button
             onClick={calculateScore}
