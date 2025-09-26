@@ -52,7 +52,7 @@ const AquizAttempt = () => {
   );
 };
 
-  useEffect(() => {
+ useEffect(() => {
   const fetchQuiz = async () => {
     if (!quizdata || hasFetched.current) return;
     hasFetched.current = true;
@@ -70,13 +70,13 @@ const AquizAttempt = () => {
       console.log("Backend response:", response.data);
       
       if (response.data.generated_content) {
-        const parsedQuiz = parseQuizContent(response.data.generated_content);
+        // Pass the entire response.data, not just response.data.generated_content
+        const parsedQuiz = parseQuizContent(response.data);
         
         if (validateQuiz(parsedQuiz)) {
           setQuiz(parsedQuiz);
         } else {
           console.error("Parsed quiz failed validation");
-          // You might want to retry or show an error message
         }
       } else {
         console.error("Quiz data format incorrect:", response.data);
@@ -91,118 +91,54 @@ const AquizAttempt = () => {
   fetchQuiz();
 }, [quizdata]);
 
-  const parseQuizContent = (content) => {
+  const parseQuizContent = (responseData) => {
   try {
-    console.log("Raw content received:", content);
+    console.log("Full response data:", responseData);
     
-    // Remove any surrounding markdown code blocks
-    content = content.trim();
-    if (content.startsWith("```json")) {
-      content = content.slice(7).trim();
-    }
-    if (content.startsWith("```")) {
-      content = content.slice(3).trim();
-    }
-    if (content.endsWith("```")) {
-      content = content.slice(0, -3).trim();
+    // Check if we have the generated_content field
+    if (!responseData.generated_content) {
+      throw new Error("No generated_content found in response");
     }
 
-    // Fix the JSON by properly escaping backslashes
-    content = content.replace(/\\/g, '\\\\');
+    // The generated_content is a JSON string, so parse it
+    const quizData = JSON.parse(responseData.generated_content);
+    console.log("Parsed quiz data:", quizData);
 
-    // Also fix other common JSON issues
-    content = content
-      .replace(/\n/g, '\\n')  // Escape newlines
-      .replace(/\t/g, '\\t')  // Escape tabs
-      .replace(/\r/g, '\\r')  // Escape carriage returns
-      .replace(/\f/g, '\\f'); // Escape form feeds
-
-    // Try to parse the content
-    let quizData;
-    try {
-      quizData = JSON.parse(content);
-    } catch (parseError) {
-      console.warn("First parse attempt failed, trying to extract and fix JSON...");
-      
-      // Try to find JSON within the text with more robust extraction
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          // Clean the JSON string more aggressively
-          let jsonString = jsonMatch[0];
-          // Escape backslashes
-          jsonString = jsonString.replace(/\\/g, '\\\\');
-          // Remove any trailing commas that might break JSON
-          jsonString = jsonString.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-          
-          quizData = JSON.parse(jsonString);
-        } catch (secondError) {
-          console.error("Second parse attempt failed:", secondError);
-          throw new Error("Could not parse JSON even after cleaning");
-        }
-      } else {
-        throw new Error("No valid JSON found in response");
-      }
-    }
-
-    // Validate the basic structure
+    // Validate basic structure
     if (!quizData.questions || !Array.isArray(quizData.questions)) {
       throw new Error("Invalid quiz format: missing questions array");
     }
 
+    if (!quizData.answer_key || typeof quizData.answer_key !== 'object') {
+      throw new Error("Invalid quiz format: missing answer_key object");
+    }
+
     // Transform questions to consistent format
-    const quizQuestions = quizData.questions.map((q, index) => {
-      const questionId = q.id || `Q${index + 1}`;
+    const quizQuestions = quizData.questions.map((q) => {
+      const correctAnswerKey = quizData.answer_key[q.id];
       
-      // Handle different answer key formats
-      let correctAnswerKey = "";
-      if (quizData.answer_key) {
-        correctAnswerKey = quizData.answer_key[questionId] || 
-                          quizData.answer_key[q.id] || 
-                          quizData.answer_key[index + 1] || 
-                          quizData.answer_key[`Q${index + 1}`];
-      } else if (quizData.answer_keys) {
-        correctAnswerKey = quizData.answer_keys[questionId] || 
-                          quizData.answer_keys[q.id] || 
-                          quizData.answer_keys[index + 1] || 
-                          quizData.answer_keys[`Q${index + 1}`];
-      }
-
-      // Get answers/options (handle different field names)
-      const options = q.answers || q.options || [];
-      
-      // Find correct answer text
       let correctAnswer = "";
-      if (options.length > 0 && correctAnswerKey) {
-        const correctOption = options.find(option => 
-          option.trim().startsWith(`${correctAnswerKey})`) ||
-          option.trim().startsWith(`${correctAnswerKey}.`)
+      if (q.answers && q.answers.length > 0 && correctAnswerKey) {
+        const correctOption = q.answers.find(option => 
+          option.trim().startsWith(`${correctAnswerKey})`)
         );
-        correctAnswer = correctOption || options[0] || "";
+        correctAnswer = correctOption || q.answers[0] || "";
       }
-
-      // Combine scenario and question
-      const fullQuestion = q.scenario ? 
-        `${q.scenario}\n\n${q.question || q.questionText || ""}` : 
-        (q.question || q.questionText || "");
 
       return {
-        id: questionId,
-        question: fullQuestion,
-        options: options,
-        answer: correctAnswer,
-        rawData: q // Keep raw data for debugging
+        id: q.id,
+        question: q.question,
+        options: q.answers,
+        answer: correctAnswer
       };
     });
 
-    console.log("Successfully parsed quiz:", quizQuestions);
+    console.log("Final parsed quiz questions:", quizQuestions);
     return quizQuestions;
 
   } catch (error) {
     console.error("Error parsing quiz content:", error.message);
-    console.error("Content that failed to parse:", content);
-    
-    // Return a fallback quiz or empty array
+    console.error("Response data that failed:", responseData);
     return [];
   }
 };
