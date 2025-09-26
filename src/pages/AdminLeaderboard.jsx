@@ -13,7 +13,7 @@ const AdminLeaderboard = () => {
   useEffect(() => {
     const fetchQuizzes = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/quizzes', {
+        const response = await axios.get('https://angularbackend-o18e.onrender.com/api/quizzes', {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
@@ -37,7 +37,7 @@ const AdminLeaderboard = () => {
     }
     
     try {
-      const response = await axios.get(`http://localhost:5000/api/quizzes/${quizId}/leaderboard`, {
+      const response = await axios.get(`https://angularbackend-o18e.onrender.com/api/quizzes/${quizId}/leaderboard`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
