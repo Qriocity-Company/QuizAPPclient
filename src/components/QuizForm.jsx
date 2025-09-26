@@ -142,14 +142,6 @@ const QuizForm = () => {
             />
           </div>
 
-          <button
-            type="button"
-            onClick={generateQuiz}
-            className="flex items-center px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg focus:outline-none transition duration-200"
-          >
-            <FaMagic className="mr-2" /> Generate Quiz
-          </button>
-
           {questions.map((q, index) => (
             <div key={index} className="bg-gray-50 p-4 rounded-lg shadow-sm space-y-4">
               <div>
