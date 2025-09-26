@@ -41,85 +41,151 @@ const AquizAttempt = () => {
     }
   }, [id]);
 
+  const validateQuiz = (quiz) => {
+  if (!quiz || !Array.isArray(quiz)) return false;
+  
+  return quiz.every(q => 
+    q.question && 
+    Array.isArray(q.options) && 
+    q.options.length >= 2 && // At least 2 options
+    q.answer !== undefined
+  );
+};
+
   useEffect(() => {
-    const fetchQuiz = async () => {
-      if (!quizdata || hasFetched.current) return;
-      hasFetched.current = true;
+  const fetchQuiz = async () => {
+    if (!quizdata || hasFetched.current) return;
+    hasFetched.current = true;
 
-      setLoading(true);
-      try {
-        console.log("QUIZ DATA : ",quizdata)
-        const response = await axios.post("http://localhost:8000/generate_content", {
-          subject: quizdata.title,
-          topic: quizdata.title,
-          level: quizdata.difficulty,
-          content_type: "quiz",
-        });
+    setLoading(true);
+    try {
+      console.log("QUIZ DATA : ", quizdata);
+      const response = await axios.post("http://localhost:8000/generate_content", {
+        subject: quizdata.title,
+        topic: quizdata.title,
+        level: quizdata.difficulty,
+        content_type: "quiz",
+      });
 
-        console.log(response.data);
-        if (response.data.generated_content) {
-          const parsedQuiz = parseQuizContent(response.data.generated_content);
+      console.log("Backend response:", response.data);
+      
+      if (response.data.generated_content) {
+        const parsedQuiz = parseQuizContent(response.data.generated_content);
+        
+        if (validateQuiz(parsedQuiz)) {
           setQuiz(parsedQuiz);
         } else {
-          console.error("Quiz data format incorrect:", response.data);
+          console.error("Parsed quiz failed validation");
+          // You might want to retry or show an error message
         }
-      } catch (error) {
-        console.error("Error fetching quiz:", error.message);
-      } finally {
-        setLoading(false);
+      } else {
+        console.error("Quiz data format incorrect:", response.data);
       }
-    };
+    } catch (error) {
+      console.error("Error fetching quiz:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchQuiz();
-  }, [quizdata]);
+  fetchQuiz();
+}, [quizdata]);
 
   const parseQuizContent = (content) => {
   try {
-    // Remove surrounding triple backticks and the "```json" label if present
+    console.log("Raw content received:", content);
+    
+    // Remove any surrounding markdown code blocks
     content = content.trim();
     if (content.startsWith("```json")) {
-      content = content.slice(7); // Remove the ```json part
+      content = content.slice(7).trim();
+    }
+    if (content.startsWith("```")) {
+      content = content.slice(3).trim();
     }
     if (content.endsWith("```")) {
-      content = content.slice(0, -3); // Remove the trailing ```
+      content = content.slice(0, -3).trim();
     }
 
-    // Parse the cleaned JSON
-    const quizData = JSON.parse(content);
-
-    // Transform the quizData into the format expected by your component
-    const quizQuestions = quizData.questions.map((q) => {
-      // Find the correct answer key for this question
-      const correctAnswerKey = quizData.answer_key[q.id];
+    // Try to parse the content
+    let quizData;
+    try {
+      quizData = JSON.parse(content);
+    } catch (parseError) {
+      console.warn("First parse attempt failed, trying to extract JSON...");
       
-      // Find the correct answer text based on the answer key
-      let correctAnswer = "";
-      if (q.answers && q.answers.length > 0 && correctAnswerKey) {
-        // Find the option that starts with the correct answer key (e.g., "A)")
-        const correctOption = q.answers.find(option => 
-          option.trim().startsWith(`${correctAnswerKey})`)
-        );
-        correctAnswer = correctOption || "";
+      // Try to find JSON within the text
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        quizData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No valid JSON found in response");
+      }
+    }
+
+    // Validate the basic structure
+    if (!quizData.questions || !Array.isArray(quizData.questions)) {
+      throw new Error("Invalid quiz format: missing questions array");
+    }
+
+    // Transform questions to consistent format
+    const quizQuestions = quizData.questions.map((q, index) => {
+      const questionId = q.id || `Q${index + 1}`;
+      
+      // Handle different answer key formats
+      let correctAnswerKey = "";
+      if (quizData.answer_key) {
+        correctAnswerKey = quizData.answer_key[questionId] || 
+                          quizData.answer_key[q.id] || 
+                          quizData.answer_key[index + 1] || 
+                          quizData.answer_key[`Q${index + 1}`];
+      } else if (quizData.answer_keys) {
+        correctAnswerKey = quizData.answer_keys[questionId] || 
+                          quizData.answer_keys[q.id] || 
+                          quizData.answer_keys[index + 1] || 
+                          quizData.answer_keys[`Q${index + 1}`];
       }
 
-      // Combine scenario and question for display
-      const fullQuestion = q.scenario ? `${q.scenario}\n\n${q.question}` : q.question;
+      // Get answers/options (handle different field names)
+      const options = q.answers || q.options || [];
+      
+      // Find correct answer text
+      let correctAnswer = "";
+      if (options.length > 0 && correctAnswerKey) {
+        const correctOption = options.find(option => 
+          option.trim().startsWith(`${correctAnswerKey})`) ||
+          option.trim().startsWith(`${correctAnswerKey}.`)
+        );
+        correctAnswer = correctOption || options[0] || "";
+      }
+
+      // Combine scenario and question
+      const fullQuestion = q.scenario ? 
+        `${q.scenario}\n\n${q.question || q.questionText || ""}` : 
+        (q.question || q.questionText || "");
 
       return {
-        id: q.id,
+        id: questionId,
         question: fullQuestion,
-        options: q.answers || [],
-        answer: correctAnswer
+        options: options,
+        answer: correctAnswer,
+        rawData: q // Keep raw data for debugging
       };
     });
 
-    console.log("Parsed Quiz Content:", quizQuestions);
+    console.log("Successfully parsed quiz:", quizQuestions);
     return quizQuestions;
+
   } catch (error) {
     console.error("Error parsing quiz content:", error.message);
+    console.error("Content that failed to parse:", content);
+    
+    // Return a fallback quiz or empty array
     return [];
   }
 };
+
+
 
   const handleAnswerChange = (questionIndex, answer) => {
     setSelectedAnswers((prev) => ({ ...prev, [questionIndex]: answer }));
