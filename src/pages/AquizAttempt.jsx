@@ -74,54 +74,86 @@ const AquizAttempt = () => {
   }, [quizdata]);
 
   const parseQuizContent = (content) => {
-    try {
-      // Remove surrounding triple backticks and the "```json" label if present
-      content = content.trim();
-      if (content.startsWith("```json")) {
-        content = content.slice(7); // Remove the ```json part
-      }
-      if (content.endsWith("```")) {
-        content = content.slice(0, -3); // Remove the trailing ```
-      }
-  
-      // Parse the cleaned JSON
-      const quizData = JSON.parse(content);
-  
-      // Transform the quizData into the format expected by your component
-      const quizQuestions = quizData.questions.map((q) => ({
-        question: q.question,
-        options: q.options,
-        answer: q.answer,
-      }));
-  
-      console.log("Parsed Quiz Content:", quizQuestions);
-      return quizQuestions;
-    } catch (error) {
-      console.error("Error parsing quiz content:", error.message);
-      return [];
+  try {
+    // Remove surrounding triple backticks and the "```json" label if present
+    content = content.trim();
+    if (content.startsWith("```json")) {
+      content = content.slice(7); // Remove the ```json part
     }
-  };
+    if (content.endsWith("```")) {
+      content = content.slice(0, -3); // Remove the trailing ```
+    }
+
+    // Parse the cleaned JSON
+    const quizData = JSON.parse(content);
+
+    // Create a map of questions by ID for easy lookup
+    const questionsMap = {};
+    quizData.questions.forEach((q) => {
+      questionsMap[q.id] = q;
+    });
+
+    // Create a map of answers by ID for easy lookup
+    const answersMap = {};
+    quizData.answers.forEach((a) => {
+      answersMap[a.id] = a.options;
+    });
+
+    // Transform the quizData into the format expected by your component
+    const quizQuestions = quizData.questions.map((q) => {
+      // Find the correct answer key for this question
+      const correctAnswerKey = quizData.answer_keys[q.id.toString()];
+      
+      // Get the options for this question
+      const options = answersMap[q.id] || [];
+      
+      // Find the correct answer text based on the answer key
+      let correctAnswer = "";
+      if (options.length > 0 && correctAnswerKey) {
+        // Find the option that starts with the correct answer key (e.g., "A)")
+        const correctOption = options.find(option => 
+          option.trim().startsWith(`${correctAnswerKey})`)
+        );
+        correctAnswer = correctOption || "";
+      }
+
+      return {
+        id: q.id,
+        question: q.question,
+        options: options,
+        answer: correctAnswer // This now contains the full correct answer text
+      };
+    });
+
+    console.log("Parsed Quiz Content:", quizQuestions);
+    return quizQuestions;
+  } catch (error) {
+    console.error("Error parsing quiz content:", error.message);
+    return [];
+  }
+};
 
   const handleAnswerChange = (questionIndex, answer) => {
     setSelectedAnswers((prev) => ({ ...prev, [questionIndex]: answer }));
   };
 
   const calculateScore = () => {
-    if (!quiz) return;
+  if (!quiz) return;
 
-    let calculatedScore = 0;
+  let calculatedScore = 0;
 
-    quiz.forEach((q, index) => {
-      const selectedAnswer = selectedAnswers[index]?.trim();
-      const correctAnswer = q.answer?.trim();
+  quiz.forEach((q, index) => {
+    const selectedAnswer = selectedAnswers[index]?.trim();
+    const correctAnswer = q.answer?.trim();
 
-      if (selectedAnswer === correctAnswer) {
-        calculatedScore++;
-      }
-    });
-    setQuizScores([...quiz_scores, calculatedScore]);
-    setScore(calculatedScore);
-  };
+    // Compare the full answer text
+    if (selectedAnswer === correctAnswer) {
+      calculatedScore++;
+    }
+  });
+  setQuizScores([...quiz_scores, calculatedScore]);
+  setScore(calculatedScore);
+};
 
   if (loading) {
     return (
