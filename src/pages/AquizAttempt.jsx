@@ -107,17 +107,39 @@ const AquizAttempt = () => {
       content = content.slice(0, -3).trim();
     }
 
+    // Fix the JSON by properly escaping backslashes
+    content = content.replace(/\\/g, '\\\\');
+
+    // Also fix other common JSON issues
+    content = content
+      .replace(/\n/g, '\\n')  // Escape newlines
+      .replace(/\t/g, '\\t')  // Escape tabs
+      .replace(/\r/g, '\\r')  // Escape carriage returns
+      .replace(/\f/g, '\\f'); // Escape form feeds
+
     // Try to parse the content
     let quizData;
     try {
       quizData = JSON.parse(content);
     } catch (parseError) {
-      console.warn("First parse attempt failed, trying to extract JSON...");
+      console.warn("First parse attempt failed, trying to extract and fix JSON...");
       
-      // Try to find JSON within the text
+      // Try to find JSON within the text with more robust extraction
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        quizData = JSON.parse(jsonMatch[0]);
+        try {
+          // Clean the JSON string more aggressively
+          let jsonString = jsonMatch[0];
+          // Escape backslashes
+          jsonString = jsonString.replace(/\\/g, '\\\\');
+          // Remove any trailing commas that might break JSON
+          jsonString = jsonString.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+          
+          quizData = JSON.parse(jsonString);
+        } catch (secondError) {
+          console.error("Second parse attempt failed:", secondError);
+          throw new Error("Could not parse JSON even after cleaning");
+        }
       } else {
         throw new Error("No valid JSON found in response");
       }
